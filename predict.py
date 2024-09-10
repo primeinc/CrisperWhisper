@@ -21,10 +21,7 @@ def adjust_pauses_for_hf_pipeline_output(pipeline_output, split_threshold=0.12):
         pause_duration = next_start - current_end
 
         if pause_duration > 0:
-            if pause_duration > split_threshold:
-                distribute = split_threshold / 2
-            else:
-                distribute = pause_duration / 2
+            distribute = min(pause_duration / 2, split_threshold / 2)
 
             # Adjust current chunk end time
             adjusted_chunks[i]["timestamp"] = (current_start, current_end + distribute)
@@ -53,13 +50,9 @@ class Predictor(BasePredictor):
 
         self.processor = AutoProcessor.from_pretrained(self.model_id)
 
-        # Print model version and hash
-        model_version = self.model.config._name_or_path
-        model_hash = self.model.config.model_hash if hasattr(self.model.config, "model_hash") else "Unknown"
-        print(f"[INFO] Model Version: {model_version}")
-        print(f"[INFO] Model Hash: {model_hash}")
+        print(f"[INFO] Model Version: {self.model.config._name_or_path}")
+        print(f"[INFO] Model Hash: {getattr(self.model.config, 'model_hash', 'Unknown')}")
 
-        # Initialize the pipeline
         self.pipe = pipeline(
             "automatic-speech-recognition",
             model=self.model,
@@ -76,40 +69,30 @@ class Predictor(BasePredictor):
     def predict(self, audio: Path = Input(description="Audio file to transcribe")) -> str:
         """Run a prediction on the CrisperWhisper model"""
         try:
-            # Load the audio file
             print(f"[INFO] Loading audio file: {audio}")
             waveform, sample_rate = torchaudio.load(audio)
-            print(f"[INFO] Original waveform shape: {waveform.shape}")
-            print(f"[INFO] Sample rate: {sample_rate}")
 
-            # If the audio is stereo (multi-channel), convert it to mono
             if waveform.shape[0] > 1:
-                print(f"[INFO] Converting stereo to mono.")
                 waveform = torch.mean(waveform, dim=0, keepdim=True)
 
-            # Resample to 16kHz if necessary
             if sample_rate != 16000:
-                print(f"[INFO] Resampling from {sample_rate} Hz to 16000 Hz.")
-                resampler = T.Resample(orig_freq=sample_rate, new_freq=16000)
-                waveform = resampler(waveform)
+                waveform = T.Resample(orig_freq=sample_rate, new_freq=16000)(waveform)
 
-            # Convert the waveform tensor to a NumPy array
             waveform = waveform.squeeze().cpu().numpy()
-            print(f"[INFO] Final waveform shape: {waveform.shape}")
 
-            # Pass the waveform to the pipeline
-            print(f"[INFO] Running transcription pipeline.")
             hf_pipeline_output = self.pipe(waveform)
 
-            # Adjust the pauses and return the refined result
             crisper_whisper_result = adjust_pauses_for_hf_pipeline_output(hf_pipeline_output)
+            
+            # Return the transcription
+            transcription = " ".join([chunk['text'] for chunk in crisper_whisper_result["chunks"]])
             print(f"[INFO] Transcription successful.")
-            return crisper_whisper_result
+            return transcription
 
         except Exception as e:
             print(f"[ERROR] Error during transcription: {str(e)}")
             return f"Error during transcription: {str(e)}"
-
+        
     def post_process(self):
         """Run some final diagnostics and log the package versions."""
         # Print the installed packages
