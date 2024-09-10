@@ -65,13 +65,17 @@ class Predictor(BasePredictor):
         """Run a prediction on the CrisperWhisper model"""
         try:
             # Load the audio file
-            waveform, _ = torchaudio.load(audio)
+            waveform, sample_rate = torchaudio.load(audio)
 
-            # Convert waveform tensor to numpy array
-            waveform_numpy = waveform.cpu().numpy()
+            # If the audio is stereo (multi-channel), convert it to mono
+            if waveform.shape[0] > 1:
+                waveform = torch.mean(waveform, dim=0, keepdim=True)
 
-            # Pass the waveform numpy array to the pipeline
-            hf_pipeline_output = self.pipe(waveform_numpy)
+            # Convert the waveform tensor to a NumPy array
+            waveform = waveform.cpu().numpy()
+
+            # Pass the waveform to the pipeline
+            hf_pipeline_output = self.pipe(waveform)
 
             # Adjust the pauses and return the refined result
             crisper_whisper_result = adjust_pauses_for_hf_pipeline_output(hf_pipeline_output)
