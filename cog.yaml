@@ -1,15 +1,8 @@
-# cog.yaml
-
 build:
   python_version: "3.10"
-  run:
-    - apt-get update && apt-get install -y ffmpeg
-    - pip install -r requirements.txt
-
-predict:
+  python_requirements: "requirements.txt"
+  system_packages:
+    - "ffmpeg"
   gpu: true
-  command: "python transcribe.py --f /input/audio_file.wav"
 
-environment_variables:
-  - name: CUDA_VISIBLE_DEVICES
-    value: "0"
+predict: "predict.py:Predictor"
