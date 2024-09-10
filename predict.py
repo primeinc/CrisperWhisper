@@ -1,6 +1,7 @@
 from cog import BasePredictor, Input, Path
 import torch
 import torchaudio
+import numpy as np
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 
 def adjust_pauses_for_hf_pipeline_output(pipeline_output, split_threshold=0.12):
@@ -66,9 +67,12 @@ class Predictor(BasePredictor):
             # Load the audio file
             waveform, _ = torchaudio.load(audio)
 
-            # Pass the waveform to the pipeline
-            hf_pipeline_output = self.pipe(waveform)
-            
+            # Convert waveform tensor to numpy array
+            waveform_numpy = waveform.cpu().numpy()
+
+            # Pass the waveform numpy array to the pipeline
+            hf_pipeline_output = self.pipe(waveform_numpy)
+
             # Adjust the pauses and return the refined result
             crisper_whisper_result = adjust_pauses_for_hf_pipeline_output(hf_pipeline_output)
             return crisper_whisper_result
