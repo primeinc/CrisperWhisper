@@ -1,0 +1,13 @@
+# cog.yaml
+build:
+  python_version: "3.10"
+  run: |
+    apt-get update && apt-get install -y ffmpeg
+    pip install -r requirements.txt
+
+predict:
+  gpu: true
+  entry_point: "transcribe.py"
+  environment_variables:
+    - name: CUDA_VISIBLE_DEVICES
+      value: "0"
