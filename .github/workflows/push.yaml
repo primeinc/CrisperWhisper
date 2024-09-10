@@ -1,46 +1,29 @@
-name: Push to Replicate
+name: Push CrisperWhisper COG to Replicate
 
 on:
-  # This allows you to manually trigger the workflow from the GitHub Actions page
   workflow_dispatch:
     inputs:
       model_name:
         description: 'nyrahealth/CrisperWhisper'
-
-  # Uncomment to automatically push on every push to the main branch
-  # push:
-  #   branches:
-  #     - main
+  push:
+    branches:
+      - main
 
 jobs:
   push_to_replicate:
-    name: Push to Replicate
-
+    name: Push CrisperWhisper to Replicate
     runs-on: ubuntu-latest
-
     steps:
-      # Free up space for larger models, if needed
-      - name: Free disk space
+      - name: Free Disk Space
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: false
           docker-images: false
-
-      # Checkout the repository
       - name: Checkout
         uses: actions/checkout@v4
-
-      # Install Docker buildx and Cog, and authenticate with Replicate
       - name: Setup Cog
         uses: replicate/setup-cog@v2
         with:
           token: ${{ secrets.REPLICATE_API_TOKEN }}
-
-      # Push the model to Replicate
       - name: Push to Replicate
-        run: |
-          if [ -n "${{ inputs.model_name }}" ]; then
-            cog push r8.im/${{ inputs.model_name }}
-          else
-            cog push
-          fi
+        run: cog push r8.im/primeinc/crisperwhisper
