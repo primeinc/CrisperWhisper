@@ -1,7 +1,9 @@
 from cog import BasePredictor, Input, Path
 import torch
 import torchaudio
+import torchaudio.transforms as T
 import numpy as np
+import subprocess
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 
 def adjust_pauses_for_hf_pipeline_output(pipeline_output, split_threshold=0.12):
@@ -40,6 +42,9 @@ class Predictor(BasePredictor):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
+        print(f"[INFO] Device: {self.device}")
+        print(f"[INFO] Torch dtype: {self.torch_dtype}")
+
         self.model_id = "nyrahealth/CrisperWhisper"
         self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
             self.model_id, torch_dtype=self.torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
@@ -47,6 +52,12 @@ class Predictor(BasePredictor):
         self.model.to(self.device)
 
         self.processor = AutoProcessor.from_pretrained(self.model_id)
+
+        # Print model version and hash
+        model_version = self.model.config._name_or_path
+        model_hash = self.model.config.model_hash if hasattr(self.model.config, "model_hash") else "Unknown"
+        print(f"[INFO] Model Version: {model_version}")
+        print(f"[INFO] Model Hash: {model_hash}")
 
         # Initialize the pipeline
         self.pipe = pipeline(
@@ -60,26 +71,51 @@ class Predictor(BasePredictor):
             torch_dtype=self.torch_dtype,
             device=self.device,
         )
+        print(f"[INFO] Pipeline initialized.")
 
     def predict(self, audio: Path = Input(description="Audio file to transcribe")) -> str:
         """Run a prediction on the CrisperWhisper model"""
         try:
             # Load the audio file
+            print(f"[INFO] Loading audio file: {audio}")
             waveform, sample_rate = torchaudio.load(audio)
+            print(f"[INFO] Original waveform shape: {waveform.shape}")
+            print(f"[INFO] Sample rate: {sample_rate}")
 
             # If the audio is stereo (multi-channel), convert it to mono
             if waveform.shape[0] > 1:
+                print(f"[INFO] Converting stereo to mono.")
                 waveform = torch.mean(waveform, dim=0, keepdim=True)
 
+            # Resample to 16kHz if necessary
+            if sample_rate != 16000:
+                print(f"[INFO] Resampling from {sample_rate} Hz to 16000 Hz.")
+                resampler = T.Resample(orig_freq=sample_rate, new_freq=16000)
+                waveform = resampler(waveform)
+
             # Convert the waveform tensor to a NumPy array
-            waveform = waveform.cpu().numpy()
+            waveform = waveform.squeeze().cpu().numpy()
+            print(f"[INFO] Final waveform shape: {waveform.shape}")
 
             # Pass the waveform to the pipeline
+            print(f"[INFO] Running transcription pipeline.")
             hf_pipeline_output = self.pipe(waveform)
 
             # Adjust the pauses and return the refined result
             crisper_whisper_result = adjust_pauses_for_hf_pipeline_output(hf_pipeline_output)
+            print(f"[INFO] Transcription successful.")
             return crisper_whisper_result
 
         except Exception as e:
+            print(f"[ERROR] Error during transcription: {str(e)}")
             return f"Error during transcription: {str(e)}"
+
+    def post_process(self):
+        """Run some final diagnostics and log the package versions."""
+        # Print the installed packages
+        print(f"[INFO] Running `pip freeze` to list installed packages:")
+        pip_freeze_output = subprocess.run(["pip", "freeze"], capture_output=True, text=True)
+        print(pip_freeze_output.stdout)
+
+        # Print model details
+        print(f"[INFO] Model details: {self.model.config}")
